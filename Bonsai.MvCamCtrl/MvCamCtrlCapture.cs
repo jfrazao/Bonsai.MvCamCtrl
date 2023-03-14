@@ -156,15 +156,16 @@ namespace Bonsai.MvCamCtrl
                                 nRet = camera.GetImageBuffer(ref pcFrameInfo, 1000);
                                 lock (cameraLock)
                                 {
-                                   
+
                                     // BitmapData m_pcBitmapData = m_pcBitmap.LockBits(new Rectangle(0, 0, pcConvertParam.InImage.Width, pcConvertParam.InImage.Height), ImageLockMode.ReadWrite, m_pcBitmap.PixelFormat);
                                     //Marshal.Copy(pcConvertParam.OutImage.ImageData, 0, m_pcBitmapData.Scan0, (Int32)pcConvertParam.OutImage.ImageData.Length);
-                                    var pcImgForDriver = pcFrameInfo.Image.Clone() as CImage;
+                                    //var pcImgForDriver = pcFrameInfo.Image.Clone() as CImage;
+                                    var pcImgForDriver = pcFrameInfo.Image;
 
                                     var pcImgSpecInfo = pcFrameInfo.FrameSpec;
                                     IntPtr unmanagedPointer = Marshal.AllocHGlobal(pcImgForDriver.ImageData.Length);
                                     Marshal.Copy(pcImgForDriver.ImageData, 0, unmanagedPointer, pcImgForDriver.ImageData.Length);
-                                    if (pcImgForDriver.PixelType == MvGvspPixelType.PixelType_Gvsp_HB_Mono8)
+                                    if (pcImgForDriver.PixelType == MvGvspPixelType.PixelType_Gvsp_Mono8)
                                     {
                                         using (var bitmapHeader = new IplImage(new OpenCV.Net.Size(pcImgForDriver.Width, pcImgForDriver.Height), IplDepth.U8, 1, unmanagedPointer))
                                         {
@@ -183,6 +184,9 @@ namespace Bonsai.MvCamCtrl
                                     Marshal.FreeHGlobal(unmanagedPointer);
                                 }
                                 observer.OnNext(result);
+                                //camera.DisplayOneFrame(ref pcDisplayInfo);
+
+                                camera.FreeImageBuffer(ref pcFrameInfo);
                             }
                         }
                     }
