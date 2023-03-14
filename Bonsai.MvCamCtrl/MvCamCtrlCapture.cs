@@ -9,13 +9,22 @@ using System.Xml.Serialization;
 using System.Threading.Tasks;
 using MvCamCtrl.NET;
 using System.Reactive;
+using Bonsai.Expressions;
+using System.Xml.Schema;
+using MvCamCtrl.NET.CameraParams;
+using System.Drawing.Imaging;
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Diagnostics.Eventing.Reader;
+using static System.Net.Mime.MediaTypeNames;
+using Bonsai.Reactive;
 
 namespace Bonsai.MvCamCtrl
 {
     [XmlType(Namespace = Constants.XmlNamespace)]
     [Description("Acquires a sequence of images from a HikRobot camera using the MvCamCtrl software.")]
 
-    public class MvCamCtrlCapture : Source<MvCamCtrlDataFrame>
+    public class MvCamCtrlCapture : Source<IplImage>
     {
         static readonly object cameraLock = new object();
 
@@ -25,26 +34,27 @@ namespace Bonsai.MvCamCtrl
         //[TypeConverter(typeof(SerialNumberConverter))]
         [Description("The optional serial number of the camera from which to acquire images.")]
         public string SerialNumber { get; set; }
-        public override IObservable<MvCamCtrlDataFrame> Generate()
+        public override IObservable<IplImage> Generate()
         {
             return Generate(Observable.Return(Unit.Default));
         }
         //[Description("The method used to process bayer color images.")]
         //public ColorProcessingAlgorithm ColorProcessing { get; set; }
-        public IObservable<MvCamCtrlDataFrame> Generate<TSource>(IObservable<TSource> start)
+        public IObservable<IplImage> Generate<TSource>(IObservable<TSource> start)
         {
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
 
-            /*
-            return Observable.Create<MvCamCtrlDataFrame>((observer, cancellationToken) =>
+
+            return Observable.Create<IplImage>((observer, cancellationToken) =>
             {
                 return Task.Factory.StartNew(async () =>
                 {
                     int nRet = CErrorDefine.MV_OK;
+                    var camera = new CCamera();
                     lock (cameraLock)
                     {
                         //var configFile = ParameterFile;
-                        var camera = new CCamera();
+
                         // using pixelDataConverter?
                         try
                         {
@@ -58,8 +68,9 @@ namespace Bonsai.MvCamCtrl
 
                             if (!string.IsNullOrEmpty(serialNumber))
                             {
+                                var myDeviceInfo = ltDeviceList.Find(value => value.nTLayerType == CSystem.MV_USB_DEVICE && (value as CUSBCameraInfo).chSerialNumber == serialNumber);
 
-                                //nRet = camera.CreateHandle(ref cinfo);
+                                nRet = camera.CreateHandle(ref myDeviceInfo);
                                 if (camera == null)
                                 {
                                     var message = string.Format("MvCamCtr camera with serial number {0} was not found.", serialNumber);
@@ -108,6 +119,7 @@ namespace Bonsai.MvCamCtrl
 
                     try
                     {
+                        //TODO: REMOVE THE FOLLOWING CODE 
                         //camera.Init();
                         camera.SetEnumValue("AcquisitionMode", (uint)MV_CAM_ACQUISITION_MODE.MV_ACQ_MODE_CONTINUOUS);
                         // en error handling
@@ -121,9 +133,8 @@ namespace Bonsai.MvCamCtrl
                             throw new InvalidOperationException(message);
                         }
                         //Configure(camera);
-
-                        //camera.BeginAcquisition();
                         nRet = camera.StartGrabbing();
+
                         if (CErrorDefine.MV_OK != nRet)
                         {
                             camera.DestroyHandle();
@@ -133,37 +144,52 @@ namespace Bonsai.MvCamCtrl
 
                         await start;
 
-                        var imageFormat = default(PixelFormatEnums);
-                        var converter = default(Func<IManagedImage, IplImage>);
-
-                        using (var system = new ManagedSystem()) //(var cancellation = cancellationToken.Regi   ster(hikCamera.CloseDevice))
+                        //var imageFormat = default(PixelFormatEnums);
+                        //var converter = default(Func<IManagedImage, IplImage>);
+                        CFrameout pcFrameInfo = new CFrameout();
+                        //CPixelConvertParam pcConvertParam = new CPixelConvertParam();
+                        using (var cancellation = cancellationToken.Register(() => camera.CloseDevice()))
                         {
                             while (!cancellationToken.IsCancellationRequested)
                             {
-                                using (var image = hikCamera.GetImageBuffer()
+                                IplImage result = null;
+                                nRet = camera.GetImageBuffer(ref pcFrameInfo, 1000);
+                                lock (cameraLock)
                                 {
-                                    if (image.IsIncomplete)
-                                    {
-                                        // drop incomplete frames
-                                        continue;
-                                    }
+                                   
+                                    // BitmapData m_pcBitmapData = m_pcBitmap.LockBits(new Rectangle(0, 0, pcConvertParam.InImage.Width, pcConvertParam.InImage.Height), ImageLockMode.ReadWrite, m_pcBitmap.PixelFormat);
+                                    //Marshal.Copy(pcConvertParam.OutImage.ImageData, 0, m_pcBitmapData.Scan0, (Int32)pcConvertParam.OutImage.ImageData.Length);
+                                    var pcImgForDriver = pcFrameInfo.Image.Clone() as CImage;
 
-                                    if (converter == null || image.PixelFormat != imageFormat)
+                                    var pcImgSpecInfo = pcFrameInfo.FrameSpec;
+                                    IntPtr unmanagedPointer = Marshal.AllocHGlobal(pcImgForDriver.ImageData.Length);
+                                    Marshal.Copy(pcImgForDriver.ImageData, 0, unmanagedPointer, pcImgForDriver.ImageData.Length);
+                                    if (pcImgForDriver.PixelType == MvGvspPixelType.PixelType_Gvsp_HB_Mono8)
                                     {
-                                        converter = GetConverter(image.PixelFormat, ColorProcessing);
-                                        imageFormat = image.PixelFormat;
+                                        using (var bitmapHeader = new IplImage(new OpenCV.Net.Size(pcImgForDriver.Width, pcImgForDriver.Height), IplDepth.U8, 1, unmanagedPointer))
+                                        {
+                                            result = new IplImage(bitmapHeader.Size, bitmapHeader.Depth, bitmapHeader.Channels);
+                                            CV.Copy(bitmapHeader, result);
+                                        }
                                     }
-
-                                    var output = converter(image);
-                                    observer.OnNext(new MvCamCtrlDataFrame(output, image.ChunkData));
+                                    else if (pcImgForDriver.PixelType == MvGvspPixelType.PixelType_Gvsp_BGR8_Packed)
+                                    {
+                                        using (var bitmapHeader = new IplImage(new OpenCV.Net.Size(pcImgForDriver.Width, pcImgForDriver.Height), IplDepth.U8, 3, unmanagedPointer))
+                                        {
+                                            result = new IplImage(bitmapHeader.Size, bitmapHeader.Depth, bitmapHeader.Channels);
+                                            CV.Copy(bitmapHeader, result);
+                                        }
+                                    }
+                                    Marshal.FreeHGlobal(unmanagedPointer);
                                 }
+                                observer.OnNext(result);
                             }
                         }
                     }
                     catch (Exception ex) { observer.OnError(ex); throw; }
                     finally
                     {
-                        nRet = hikCamera.StopGrabbing();
+                        nRet = camera.StopGrabbing();
                         if (CErrorDefine.MV_OK != nRet)
                         {
                             var message = string.Format("Stop grabbing failed:{0:x8}", nRet);
@@ -171,7 +197,7 @@ namespace Bonsai.MvCamCtrl
                         }
 
                         // ch:关闭设备 | en:Close device
-                        nRet = hikCamera.CloseDevice();
+                        nRet = camera.CloseDevice();
                         if (CErrorDefine.MV_OK != nRet)
                         {
                             var message = string.Format("Close device failed:{0:x8}", nRet);
@@ -179,7 +205,7 @@ namespace Bonsai.MvCamCtrl
                         }
 
                         // ch:销毁设备 | en:Destroy device
-                        nRet = hikCamera.DestroyHandle();
+                        nRet = camera.DestroyHandle();
                         if (CErrorDefine.MV_OK != nRet)
                         {
                             var message = string.Format("Destroy device failed:{0:x8}", nRet);
@@ -192,7 +218,7 @@ namespace Bonsai.MvCamCtrl
                 cancellationToken,
                 TaskCreationOptions.LongRunning,
                 TaskScheduler.Default);
-            });*/
+            });
         }
     }
 }
