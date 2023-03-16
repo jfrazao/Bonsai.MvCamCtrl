@@ -22,7 +22,7 @@ using Bonsai.Reactive;
 namespace Bonsai.MvCamCtrl
 {
     [XmlType(Namespace = Constants.XmlNamespace)]
-    [Description("Acquires a sequence of images from a HikRobot camera using the MvCamCtrl software.")]
+    [Description("Acquires a sequence of images from a HikRobot camera using the MvCamCtrl api.")]
 
     public class MvCamCtrlCapture : Source<IplImage>
     {

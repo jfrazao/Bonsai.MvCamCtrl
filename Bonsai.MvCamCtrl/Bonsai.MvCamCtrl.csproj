@@ -2,11 +2,11 @@
 
   <PropertyGroup>
     <Title>Bonsai.MvCamCtrl</Title>
-    <Description>A package for the Bonsai visual programming language.</Description>
-    <Authors></Authors>
+    <Description>A package for aquiring a sequence of images from a HikRobot camera using the MvCamCtrl api.</Description>
+    <Authors>Joao Frazao, Andre Almeida</Authors>
     <Copyright>Copyright ©  2023</Copyright>
     <GeneratePackageOnBuild Condition="'$(Configuration)'=='Release'">true</GeneratePackageOnBuild>
-    <PackageProjectUrl></PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/jfrazao/Bonsai.MvCamCtrl</PackageProjectUrl>
     <PackageLicenseExpression></PackageLicenseExpression>
     <PackageIcon></PackageIcon>
     <PackageOutputPath></PackageOutputPath>
