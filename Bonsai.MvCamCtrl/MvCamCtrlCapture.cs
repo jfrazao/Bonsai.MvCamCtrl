@@ -54,15 +54,12 @@ namespace Bonsai.MvCamCtrl
                     lock (cameraLock)
                     {
                         //var configFile = ParameterFile;
-
                         // using pixelDataConverter?
                         try
                         {
 
                             var serialNumber = SerialNumber;
                             var ltDeviceList = new List<CCameraInfo>();
-                            //var cinfo = new CUSBCameraInfo();
-                            //cinfo.chSerialNumber = "blabla";
                             var cc = new CCameraInfo();
                             nRet = CSystem.EnumDevices(CSystem.MV_GIGE_DEVICE | CSystem.MV_USB_DEVICE, ref ltDeviceList);
 
@@ -76,6 +73,15 @@ namespace Bonsai.MvCamCtrl
                                     var message = string.Format("MvCamCtr camera with serial number {0} was not found.", serialNumber);
                                     throw new InvalidOperationException(message);
                                 }
+                                // en:Open device
+                                nRet = camera.OpenDevice();
+                                if (CErrorDefine.MV_OK != nRet)
+                                {
+                                    camera.DestroyHandle();
+                                    var message = string.Format("Open device MVcamCtr failed with serial number {0}.", serialNumber);
+                                    throw new InvalidOperationException(message);
+                                }
+                                //camera = cameraList.GetByIndex((uint)index);
                             }
                             else
                             {
@@ -104,11 +110,8 @@ namespace Bonsai.MvCamCtrl
                                     var message = string.Format("Open device MVcamCtr failed at index {0}.", index);
                                     throw new InvalidOperationException(message);
                                 }
-                                //camera = cameraList.GetByIndex((uint)index);
                             }
                             ltDeviceList.Clear();
-                            //cameraList.Clear();
-
                         }
                         catch (Exception ex)
                         {
@@ -163,6 +166,7 @@ namespace Bonsai.MvCamCtrl
                                     var pcImgForDriver = pcFrameInfo.Image;
 
                                     var pcImgSpecInfo = pcFrameInfo.FrameSpec;
+  
                                     IntPtr unmanagedPointer = Marshal.AllocHGlobal(pcImgForDriver.ImageData.Length);
                                     Marshal.Copy(pcImgForDriver.ImageData, 0, unmanagedPointer, pcImgForDriver.ImageData.Length);
                                     if (pcImgForDriver.PixelType == MvGvspPixelType.PixelType_Gvsp_Mono8)
@@ -182,11 +186,12 @@ namespace Bonsai.MvCamCtrl
                                         }
                                     }
                                     Marshal.FreeHGlobal(unmanagedPointer);
+                                    camera.FreeImageBuffer(ref pcFrameInfo);
                                 }
                                 observer.OnNext(result);
                                 //camera.DisplayOneFrame(ref pcDisplayInfo);
 
-                                camera.FreeImageBuffer(ref pcFrameInfo);
+                                //camera.FreeImageBuffer(ref pcFrameInfo);
                             }
                         }
                     }
